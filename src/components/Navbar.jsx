@@ -22,6 +22,7 @@ export default function Navbar() {
     { name: "Home", href: "/" },
     { name: "Who We Are", href: "/who-we-are" },
     { name: "What We Do", href: "/what-we-do" },
+    { name: "Careers", href: "/careers" },
     { name: "Connect With Us", href: "/connect" },
   ];
 

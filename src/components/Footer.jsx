@@ -40,10 +40,16 @@ export default function Footer() {
               Quick Links
             </h3>
             <ul className="space-y-3">
-              {['Home', 'Who We Are', 'What We Do', 'Connect With Us'].map((link) => (
+              {['Home', 'Who We Are', 'What We Do', 'Careers', 'Connect With Us'].map((link) => (
                 <li key={link}>
                   <Link
-                    href={link === 'Home' ? '/' : `/${link.toLowerCase().replace(/ /g, '-')}`}
+                    href={
+                      link === 'Home'
+                        ? '/'
+                        : link === 'Connect With Us'
+                          ? '/connect'
+                          : `/${link.toLowerCase().replace(/ /g, '-')}`
+                    }
                     className="text-gray-400 hover:text-[#b026ff] transition-colors flex items-center group"
                   >
                     <span className="w-0 group-hover:w-2 h-px bg-[#b026ff] transition-all duration-300 mr-0 group-hover:mr-2"></span>
@@ -86,7 +92,7 @@ export default function Footer() {
               </li>
               <li className="flex items-start space-x-3 text-gray-400">
                 <MapPin className="w-5 h-5 text-[#00f0ff] mt-0.5" />
-                <span>07 Melavarige, Sagar<br />Karnataka, 577401</span>
+                <span>07, Sagar, Shivamogga<br />Karnataka, 577401</span>
               </li>
             </ul>
           </div>
