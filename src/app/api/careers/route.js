@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { put } from "@vercel/blob";
-import { kv } from "@vercel/kv";
-import { createClient } from "redis";
+import { isCloudStorage, getDbDiagnostics, saveApplication } from "@/lib/db";
 
 export async function POST(req) {
   try {
@@ -29,17 +28,14 @@ export async function POST(req) {
     const sanitizedFileName = `${timestamp}-${resumeFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     let resumeUrlPath = "";
     
-    // Check if running on Vercel and what databases are configured
-    const isVercel = !!process.env.VERCEL;
-    const redisUrl = process.env.KV_REST_API_URL || process.env.REDIS_URL || process.env.STORAGE_URL;
-    const hasCloudDb = !!redisUrl;
-    const isCloudStorage = isVercel || !!(hasCloudDb && process.env.BLOB_READ_WRITE_TOKEN);
+    // Check database configuration and diagnostics
+    const diagnostics = getDbDiagnostics();
 
-    if (isVercel && (!hasCloudDb || !process.env.BLOB_READ_WRITE_TOKEN)) {
+    if (diagnostics.errorMsg) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Cloud database variables not found. Please verify you linked both Vercel Redis (Upstash) & Vercel Blob in your project Storage panel, then REDEPLOY the project to apply them." 
+          error: diagnostics.errorMsg 
         },
         { status: 500 }
       );
@@ -87,40 +83,8 @@ export async function POST(req) {
       submittedAt: new Date().toISOString()
     };
 
-    if (isCloudStorage) {
-      // 2. Save application to Vercel KV or standard Redis
-      if (process.env.KV_REST_API_URL) {
-        await kv.lpush("applications", JSON.stringify(newApplication));
-      } else if (redisUrl) {
-        const client = createClient({ url: redisUrl });
-        await client.connect();
-        await client.lPush("applications", JSON.stringify(newApplication));
-        await client.quit();
-      }
-    } else {
-      // Fallback: Save application to applications.json locally
-      const dataDir = path.join(process.cwd(), "src", "data");
-      const applicationsFilePath = path.join(dataDir, "applications.json");
-      
-      let applications = [];
-      if (fs.existsSync(applicationsFilePath)) {
-        try {
-          const fileContent = await fs.promises.readFile(applicationsFilePath, "utf8");
-          applications = JSON.parse(fileContent || "[]");
-        } catch (err) {
-          console.error("Error reading applications.json, resetting to empty array", err);
-          applications = [];
-        }
-      }
-
-      applications.push(newApplication);
-
-      await fs.promises.writeFile(
-        applicationsFilePath,
-        JSON.stringify(applications, null, 2),
-        "utf8"
-      );
-    }
+    // 2. Save application to database or local filesystem
+    await saveApplication(newApplication);
 
     return NextResponse.json({
       success: true,

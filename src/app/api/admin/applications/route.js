@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { kv } from "@vercel/kv";
-import { createClient } from "redis";
+import { getDbDiagnostics, getApplications } from "@/lib/db";
 
 const ADMIN_PASSCODE = "wizard-admin";
 
@@ -17,60 +16,24 @@ export async function POST(req) {
       );
     }
 
-    const isVercel = !!process.env.VERCEL;
-    const redisUrl = process.env.KV_REST_API_URL || process.env.REDIS_URL || process.env.STORAGE_URL;
-    const hasCloudDb = !!redisUrl;
-    const isCloudStorage = isVercel || hasCloudDb;
+    const diagnostics = getDbDiagnostics();
 
-    if (isVercel && !hasCloudDb) {
+    if (diagnostics.errorMsg) {
       return NextResponse.json(
-        { success: false, error: "Vercel Redis/KV database is not linked. Please connect a database and REDEPLOY your project." },
+        { success: false, error: diagnostics.errorMsg },
         { status: 500 }
       );
     }
 
     let applications = [];
-
-    if (isCloudStorage) {
-      if (process.env.KV_REST_API_URL) {
-        // Retrieve from Vercel KV Redis List
-        const kvApps = await kv.lrange("applications", 0, -1);
-        applications = kvApps.map(item => {
-          try {
-            return typeof item === "string" ? JSON.parse(item) : item;
-          } catch (e) {
-            return item;
-          }
-        });
-      } else if (redisUrl) {
-        // Retrieve from standard Redis List
-        const client = createClient({ url: redisUrl });
-        await client.connect();
-        const redisApps = await client.lRange("applications", 0, -1);
-        await client.quit();
-        applications = redisApps.map(item => {
-          try {
-            return typeof item === "string" ? JSON.parse(item) : item;
-          } catch (e) {
-            return item;
-          }
-        });
-      }
-    } else {
-      // Fallback: Retrieve locally from applications.json
-      const dataFilePath = path.join(process.cwd(), "src", "data", "applications.json");
-      if (fs.existsSync(dataFilePath)) {
-        try {
-          const fileContent = await fs.promises.readFile(dataFilePath, "utf8");
-          applications = JSON.parse(fileContent || "[]");
-        } catch (err) {
-          console.error("Error reading applications.json", err);
-          return NextResponse.json(
-            { success: false, error: "Failed to read application records." },
-            { status: 500 }
-          );
-        }
-      }
+    try {
+      applications = await getApplications();
+    } catch (err) {
+      console.error("Error fetching applications:", err);
+      return NextResponse.json(
+        { success: false, error: err.message || "Failed to retrieve application records." },
+        { status: 500 }
+      );
     }
 
     // Return the applications sorted by newest first
