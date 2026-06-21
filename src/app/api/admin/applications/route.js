@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { kv } from "@vercel/kv";
+import { createClient } from "redis";
 
 const ADMIN_PASSCODE = "wizard-admin";
 
@@ -17,11 +18,12 @@ export async function POST(req) {
     }
 
     const isVercel = !!process.env.VERCEL;
-    const isCloudStorage = isVercel || !!process.env.KV_REST_API_URL;
+    const hasCloudDb = !!(process.env.KV_REST_API_URL || process.env.REDIS_URL);
+    const isCloudStorage = isVercel || hasCloudDb;
 
-    if (isVercel && !process.env.KV_REST_API_URL) {
+    if (isVercel && !hasCloudDb) {
       return NextResponse.json(
-        { success: false, error: "Vercel KV database is not linked. Please connect Vercel KV and REDEPLOY your project." },
+        { success: false, error: "Vercel Redis/KV database is not linked. Please connect a database and REDEPLOY your project." },
         { status: 500 }
       );
     }
@@ -29,15 +31,30 @@ export async function POST(req) {
     let applications = [];
 
     if (isCloudStorage) {
-      // Retrieve from Vercel KV Redis List
-      const kvApps = await kv.lrange("applications", 0, -1);
-      applications = kvApps.map(item => {
-        try {
-          return typeof item === "string" ? JSON.parse(item) : item;
-        } catch (e) {
-          return item;
-        }
-      });
+      if (process.env.KV_REST_API_URL) {
+        // Retrieve from Vercel KV Redis List
+        const kvApps = await kv.lrange("applications", 0, -1);
+        applications = kvApps.map(item => {
+          try {
+            return typeof item === "string" ? JSON.parse(item) : item;
+          } catch (e) {
+            return item;
+          }
+        });
+      } else if (process.env.REDIS_URL) {
+        // Retrieve from standard Redis List
+        const client = createClient({ url: process.env.REDIS_URL });
+        await client.connect();
+        const redisApps = await client.lRange("applications", 0, -1);
+        await client.quit();
+        applications = redisApps.map(item => {
+          try {
+            return typeof item === "string" ? JSON.parse(item) : item;
+          } catch (e) {
+            return item;
+          }
+        });
+      }
     } else {
       // Fallback: Retrieve locally from applications.json
       const dataFilePath = path.join(process.cwd(), "src", "data", "applications.json");

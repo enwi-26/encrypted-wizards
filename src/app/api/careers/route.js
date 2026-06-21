@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { put } from "@vercel/blob";
 import { kv } from "@vercel/kv";
+import { createClient } from "redis";
 
 export async function POST(req) {
   try {
@@ -28,15 +29,16 @@ export async function POST(req) {
     const sanitizedFileName = `${timestamp}-${resumeFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     let resumeUrlPath = "";
     
-    // Check if running on Vercel
+    // Check if running on Vercel and what databases are configured
     const isVercel = !!process.env.VERCEL;
-    const isCloudStorage = isVercel || !!(process.env.KV_REST_API_URL && process.env.BLOB_READ_WRITE_TOKEN);
+    const hasCloudDb = !!(process.env.KV_REST_API_URL || process.env.REDIS_URL);
+    const isCloudStorage = isVercel || !!(hasCloudDb && process.env.BLOB_READ_WRITE_TOKEN);
 
-    if (isVercel && (!process.env.KV_REST_API_URL || !process.env.BLOB_READ_WRITE_TOKEN)) {
+    if (isVercel && (!hasCloudDb || !process.env.BLOB_READ_WRITE_TOKEN)) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Cloud database variables not found. Please verify you linked both Vercel KV & Vercel Blob in your project Storage panel, then REDEPLOY the project to apply them." 
+          error: "Cloud database variables not found. Please verify you linked both Vercel Redis (Upstash) & Vercel Blob in your project Storage panel, then REDEPLOY the project to apply them." 
         },
         { status: 500 }
       );
@@ -85,8 +87,15 @@ export async function POST(req) {
     };
 
     if (isCloudStorage) {
-      // 2. Save application to Vercel KV Redis List
-      await kv.lpush("applications", JSON.stringify(newApplication));
+      // 2. Save application to Vercel KV or standard Redis
+      if (process.env.KV_REST_API_URL) {
+        await kv.lpush("applications", JSON.stringify(newApplication));
+      } else if (process.env.REDIS_URL) {
+        const client = createClient({ url: process.env.REDIS_URL });
+        await client.connect();
+        await client.lPush("applications", JSON.stringify(newApplication));
+        await client.quit();
+      }
     } else {
       // Fallback: Save application to applications.json locally
       const dataDir = path.join(process.cwd(), "src", "data");
