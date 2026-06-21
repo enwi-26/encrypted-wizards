@@ -28,8 +28,19 @@ export async function POST(req) {
     const sanitizedFileName = `${timestamp}-${resumeFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     let resumeUrlPath = "";
     
-    // Check if Vercel Cloud Storage is enabled in env
-    const isCloudStorage = !!(process.env.KV_REST_API_URL && process.env.BLOB_READ_WRITE_TOKEN);
+    // Check if running on Vercel
+    const isVercel = !!process.env.VERCEL;
+    const isCloudStorage = isVercel || !!(process.env.KV_REST_API_URL && process.env.BLOB_READ_WRITE_TOKEN);
+
+    if (isVercel && (!process.env.KV_REST_API_URL || !process.env.BLOB_READ_WRITE_TOKEN)) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Cloud database variables not found. Please verify you linked both Vercel KV & Vercel Blob in your project Storage panel, then REDEPLOY the project to apply them." 
+        },
+        { status: 500 }
+      );
+    }
 
     if (isCloudStorage) {
       // 1. Upload file to Vercel Blob

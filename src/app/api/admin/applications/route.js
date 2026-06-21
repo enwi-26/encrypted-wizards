@@ -16,7 +16,16 @@ export async function POST(req) {
       );
     }
 
-    const isCloudStorage = !!process.env.KV_REST_API_URL;
+    const isVercel = !!process.env.VERCEL;
+    const isCloudStorage = isVercel || !!process.env.KV_REST_API_URL;
+
+    if (isVercel && !process.env.KV_REST_API_URL) {
+      return NextResponse.json(
+        { success: false, error: "Vercel KV database is not linked. Please connect Vercel KV and REDEPLOY your project." },
+        { status: 500 }
+      );
+    }
+
     let applications = [];
 
     if (isCloudStorage) {
