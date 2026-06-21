@@ -19,24 +19,42 @@ export async function GET(req) {
       return new Response("Filename parameter is required.", { status: 400 });
     }
 
-    // Sanitize filename to prevent directory traversal attacks
-    const safeFilename = path.basename(filename);
-    const filePath = path.join(process.cwd(), "src", "data", "resumes", safeFilename);
-
-    if (!fs.existsSync(filePath)) {
-      return new Response("Resume file not found on the server.", { status: 404 });
-    }
-
-    const fileBuffer = await fs.promises.readFile(filePath);
-    
-    // Determine content type based on file extension
+    let fileBuffer;
     let contentType = "application/octet-stream";
-    if (safeFilename.endsWith(".pdf")) {
-      contentType = "application/pdf";
-    } else if (safeFilename.endsWith(".docx")) {
-      contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    } else if (safeFilename.endsWith(".doc")) {
-      contentType = "application/msword";
+
+    if (filename.startsWith("http://") || filename.startsWith("https://")) {
+      // Fetch file securely from Vercel Blob
+      try {
+        const fileRes = await fetch(filename);
+        if (!fileRes.ok) {
+          throw new Error(`Failed to fetch from Vercel Blob: ${fileRes.statusText}`);
+        }
+        const arrayBuffer = await fileRes.arrayBuffer();
+        fileBuffer = Buffer.from(arrayBuffer);
+        contentType = fileRes.headers.get("content-type") || "application/pdf";
+      } catch (err) {
+        console.error("Vercel Blob fetch error:", err);
+        return new Response(`Error retrieving resume from cloud storage: ${err.message}`, { status: 502 });
+      }
+    } else {
+      // Fallback: Read local file
+      const safeFilename = path.basename(filename);
+      const filePath = path.join(process.cwd(), "src", "data", "resumes", safeFilename);
+
+      if (!fs.existsSync(filePath)) {
+        return new Response("Resume file not found on the server.", { status: 404 });
+      }
+
+      fileBuffer = await fs.promises.readFile(filePath);
+      
+      // Determine content type based on extension
+      if (safeFilename.endsWith(".pdf")) {
+        contentType = "application/pdf";
+      } else if (safeFilename.endsWith(".docx")) {
+        contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      } else if (safeFilename.endsWith(".doc")) {
+        contentType = "application/msword";
+      }
     }
 
     const headers = new Headers();
