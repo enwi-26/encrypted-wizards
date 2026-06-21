@@ -31,7 +31,8 @@ export async function POST(req) {
     
     // Check if running on Vercel and what databases are configured
     const isVercel = !!process.env.VERCEL;
-    const hasCloudDb = !!(process.env.KV_REST_API_URL || process.env.REDIS_URL);
+    const redisUrl = process.env.KV_REST_API_URL || process.env.REDIS_URL || process.env.STORAGE_URL;
+    const hasCloudDb = !!redisUrl;
     const isCloudStorage = isVercel || !!(hasCloudDb && process.env.BLOB_READ_WRITE_TOKEN);
 
     if (isVercel && (!hasCloudDb || !process.env.BLOB_READ_WRITE_TOKEN)) {
@@ -90,8 +91,8 @@ export async function POST(req) {
       // 2. Save application to Vercel KV or standard Redis
       if (process.env.KV_REST_API_URL) {
         await kv.lpush("applications", JSON.stringify(newApplication));
-      } else if (process.env.REDIS_URL) {
-        const client = createClient({ url: process.env.REDIS_URL });
+      } else if (redisUrl) {
+        const client = createClient({ url: redisUrl });
         await client.connect();
         await client.lPush("applications", JSON.stringify(newApplication));
         await client.quit();

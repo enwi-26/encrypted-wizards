@@ -18,7 +18,8 @@ export async function POST(req) {
     }
 
     const isVercel = !!process.env.VERCEL;
-    const hasCloudDb = !!(process.env.KV_REST_API_URL || process.env.REDIS_URL);
+    const redisUrl = process.env.KV_REST_API_URL || process.env.REDIS_URL || process.env.STORAGE_URL;
+    const hasCloudDb = !!redisUrl;
     const isCloudStorage = isVercel || hasCloudDb;
 
     if (isVercel && !hasCloudDb) {
@@ -41,9 +42,9 @@ export async function POST(req) {
             return item;
           }
         });
-      } else if (process.env.REDIS_URL) {
+      } else if (redisUrl) {
         // Retrieve from standard Redis List
-        const client = createClient({ url: process.env.REDIS_URL });
+        const client = createClient({ url: redisUrl });
         await client.connect();
         const redisApps = await client.lRange("applications", 0, -1);
         await client.quit();
