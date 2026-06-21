@@ -85,7 +85,7 @@ export async function POST(req) {
   } catch (error) {
     console.error("Careers API submission error:", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error occurred while submitting." },
+      { success: false, error: `Internal server error: ${error.message}` },
       { status: 500 }
     );
   }
