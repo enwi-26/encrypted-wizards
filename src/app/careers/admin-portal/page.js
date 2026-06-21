@@ -16,7 +16,8 @@ import {
   Eye, 
   X, 
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  Trash2
 } from "lucide-react";
 import Link from "next/link";
 
@@ -65,6 +66,29 @@ export default function AdminPortal() {
     setApplications([]);
     setSearchQuery("");
     setSelectedApp(null);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this applicant record? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/applications?id=${id}&password=${encodeURIComponent(password)}`, {
+        method: "DELETE"
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setApplications(prev => prev.filter(app => app.id !== id));
+      } else {
+        alert(data.error || "Failed to delete the application.");
+      }
+    } catch (error) {
+      console.error("Error deleting application:", error);
+      alert("An error occurred while attempting to delete the application.");
+    }
   };
 
   // Filter candidates based on query
@@ -221,6 +245,7 @@ export default function AdminPortal() {
                     <th className="px-6 py-4">Submission Date</th>
                     <th className="px-6 py-4">Documents & Links</th>
                     <th className="px-6 py-4 text-center">Cover Letter</th>
+                    <th className="px-6 py-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60">
@@ -309,6 +334,17 @@ export default function AdminPortal() {
                         ) : (
                           <span className="text-xs text-gray-600 italic">None</span>
                         )}
+                      </td>
+
+                      {/* Delete Action */}
+                      <td className="px-6 py-5 text-center">
+                        <button
+                          onClick={() => handleDelete(app.id)}
+                          className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/40 rounded-xl transition-all inline-flex items-center justify-center"
+                          title="Delete Applicant"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}

@@ -163,3 +163,94 @@ export async function getApplications() {
     return [];
   }
 }
+
+/**
+ * Deletes an application by ID from either the cloud database or local filesystem.
+ */
+export async function deleteApplication(id) {
+  if (isCloudStorage) {
+    let rawList = [];
+    let restClient = null;
+    let isDefaultKv = false;
+
+    if (restUrl && restToken) {
+      if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+        rawList = await kv.lrange("applications", 0, -1);
+        isDefaultKv = true;
+      } else {
+        restClient = createKvClient({ url: restUrl, token: restToken });
+        rawList = await restClient.lrange("applications", 0, -1);
+      }
+    } else if (tcpUrl) {
+      const client = createRedisClient({ url: tcpUrl });
+      await client.connect();
+      rawList = await client.lRange("applications", 0, -1);
+      
+      let matchedRawItem = null;
+      for (const rawItem of rawList) {
+        try {
+          const parsed = typeof rawItem === "string" ? JSON.parse(rawItem) : rawItem;
+          if (parsed && parsed.id === id) {
+            matchedRawItem = rawItem;
+            break;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (matchedRawItem) {
+        await client.lRem("applications", 1, matchedRawItem);
+      }
+      await client.quit();
+      return;
+    } else {
+      throw new Error("Cloud database configuration is incomplete.");
+    }
+
+    let matchedRawItem = null;
+    for (const rawItem of rawList) {
+      try {
+        const parsed = typeof rawItem === "string" ? JSON.parse(rawItem) : rawItem;
+        if (parsed && parsed.id === id) {
+          matchedRawItem = rawItem;
+          break;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (matchedRawItem) {
+      if (isDefaultKv) {
+        await kv.lrem("applications", 1, matchedRawItem);
+      } else if (restClient) {
+        await restClient.lrem("applications", 1, matchedRawItem);
+      }
+    }
+  } else {
+    // Fallback: Delete application from applications.json locally
+    const dataDir = path.join(process.cwd(), "src", "data");
+    const applicationsFilePath = path.join(dataDir, "applications.json");
+
+    if (fs.existsSync(applicationsFilePath)) {
+      let applications = [];
+      try {
+        const fileContent = await fs.promises.readFile(applicationsFilePath, "utf8");
+        applications = JSON.parse(fileContent || "[]");
+      } catch (err) {
+        console.error("Error reading applications.json", err);
+        return;
+      }
+
+      const filteredApps = applications.filter(app => app.id !== id);
+
+      await fs.promises.writeFile(
+        applicationsFilePath,
+        JSON.stringify(filteredApps, null, 2),
+        "utf8"
+      );
+    }
+  }
+}
+

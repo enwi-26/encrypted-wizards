@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { getDbDiagnostics, getApplications } from "@/lib/db";
+import { getDbDiagnostics, getApplications, deleteApplication } from "@/lib/db";
 
 const ADMIN_PASSCODE = "wizard-admin";
 
@@ -48,6 +48,49 @@ export async function POST(req) {
 
   } catch (error) {
     console.error("Admin applications retrieval error:", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error occurred." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const password = searchParams.get("password");
+
+    if (password !== ADMIN_PASSCODE) {
+      return NextResponse.json(
+        { success: false, error: "Incorrect admin passcode. Access denied." },
+        { status: 401 }
+      );
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Application ID is required." },
+        { status: 400 }
+      );
+    }
+
+    const diagnostics = getDbDiagnostics();
+    if (diagnostics.errorMsg) {
+      return NextResponse.json(
+        { success: false, error: diagnostics.errorMsg },
+        { status: 500 }
+      );
+    }
+
+    await deleteApplication(id);
+
+    return NextResponse.json(
+      { success: true, message: "Application deleted successfully." },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Admin application deletion error:", error);
     return NextResponse.json(
       { success: false, error: "Internal server error occurred." },
       { status: 500 }
